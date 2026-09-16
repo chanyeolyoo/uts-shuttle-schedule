@@ -1,0 +1,204 @@
+document.addEventListener('DOMContentLoaded', () => {
+    const state = {
+        currentDir: 'broadway_to_botany',
+        currentTime: new Date(),
+        selectedTrip: null
+    };
+
+    // DOM Elements
+    const timeEl = document.getElementById('current-time');
+    const listEl = document.getElementById('schedule-list');
+    const dirB2B = document.getElementById('dir-b2b');
+    const dirB2BRev = document.getElementById('dir-b2b_rev');
+    const themeToggle = document.getElementById('theme-toggle');
+    const modal = document.getElementById('modal');
+    const modalContent = document.getElementById('modal-content');
+    const closeModal = document.getElementById('close-modal');
+    const modalTripTime = document.getElementById('modal-trip-time');
+    const modalDirection = document.getElementById('modal-direction');
+    const modalStops = document.getElementById('modal-stops');
+
+    // Theme Logic
+    const updateTheme = (isDark) => {
+        if (isDark) {
+            document.documentElement.classList.add('dark');
+            localStorage.setItem('theme', 'dark');
+        } else {
+            document.documentElement.classList.remove('dark');
+            localStorage.setItem('theme', 'light');
+        }
+    };
+
+    themeToggle.addEventListener('click', () => {
+        const isDark = document.documentElement.classList.toggle('dark');
+        updateTheme(isDark);
+    });
+
+    if (localStorage.getItem('theme') === 'dark' ||
+        (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+        document.documentElement.classList.add('dark');
+    }
+
+    // Schedule Rendering Logic
+    const renderSchedule = () => {
+        try {
+            if (!window.busData) {
+                listEl.innerHTML = '<p class="text-center text-red-500 py-10">Error: Timetable data not loaded.</p>';
+                return;
+            }
+
+            const dirData = window.busData[state.currentDir];
+            if (!dirData) {
+                listEl.innerHTML = `<p class="text-center text-gray-500 py-10">No data for direction: ${state.currentDir}</p>`;
+                return;
+            }
+
+            const allTrips = [...(dirData.am || []), ...(dirData.pm || [])];
+
+            // Find next bus
+            const now = state.currentTime;
+            const currentTimeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+            let nextBusId = null;
+            for (const trip of allTrips) {
+                if (trip.departure >= currentTimeStr) {
+                    nextBusId = trip.id;
+                    break;
+                }
+            }
+
+            listEl.innerHTML = '';
+
+            if (allTrips.length === 0) {
+                listEl.innerHTML = '<p class="text-center text-gray-500 py-10">No buses scheduled.</p>';
+                return;
+            }
+
+            allTrips.forEach(trip => {
+                const isNext = trip.id === nextBusId;
+                const card = document.createElement('div');
+                card.className = `p-4 rounded-2xl cursor-pointer transition-all duration-200 transform active:scale-95 ${
+                    isNext ? 'next-bus shadow-lg' : 'bg-white dark:bg-gray-800 shadow-sm'
+                }`;
+
+                const timeDisplay = trip.departure;
+                const destination = state.currentDir === 'broadway_to_botany' ? 'Botany (Lord St)' : 'Broadway (Thomas St)';
+
+                let timeUntil = '';
+                if (isNext) {
+                    const depTime = new Date();
+                    const [hrs, mins] = trip.departure.split(':').map(Number);
+                    depTime.setHours(hrs, mins, 0, 0);
+                    if (depTime < now) depTime.setDate(depTime.getDate() + 1);
+                    const diff = Math.round((depTime - now) / 60000);
+                    timeUntil = `Leaves in ${diff}m`;
+                }
+
+                card.innerHTML = `
+                    <div class="flex justify-between items-center">
+                        <div>
+                            <p class="text-2xl font-bold tabular-nums">${timeDisplay}</p>
+                            <p class="text-sm text-gray-500 dark:text-gray-400">${destination}</p>
+                        </div>
+                        <div class="text-right">
+                            ${isNext ? `<span class="text-xs font-bold text-yellow-600 dark:text-yellow-400 block mb-1">NEXT BUS</span>` : ''}
+                            <p class="text-sm font-medium ${isNext ? 'text-yellow-700 dark:text-yellow-300' : 'text-gray-400'}">${timeUntil || ''}</p>
+                            <i class="fas fa-chevron-right text-gray-300 dark:text-gray-600 ml-2"></i>
+                        </div>
+                    </div>
+                `;
+
+                card.addEventListener('click', () => openTripDetail(trip));
+                listEl.appendChild(card);
+            });
+        } catch (e) {
+            console.error('renderSchedule error:', e);
+            listEl.innerHTML = `<p class="text-center text-red-500 py-10">An error occurred while loading the schedule.</p>`;
+        }
+    };
+
+    // Modal Logic
+    const openTripDetail = (trip) => {
+        state.selectedTrip = trip;
+        modalTripTime.textContent = trip.departure;
+        modalDirection.textContent = state.currentDir === 'broadway_to_botany' ? 'Broadway &rarr; Botany' : 'Botany &rarr; Broadway';
+
+        modalStops.innerHTML = '';
+        trip.stops.forEach((stop, index) => {
+            const stopEl = document.createElement('div');
+            stopEl.className = 'flex items-center gap-4 relative';
+
+            const isFirst = index === 0;
+            const isLast = index === trip.stops.length - 1;
+
+            stopEl.innerHTML = `
+                <div class="flex flex-col items-center">
+                    <div class="w-4 h-4 rounded-full z-10 ${isFirst ? 'bg-blue-500' : isLast ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'}"></div>
+                    ${!isLast ? '<div class="w-0.5 h-full bg-gray-200 dark:bg-gray-700 absolute top-4 bottom-0"></div>' : ''}
+                </div>
+                <div class="flex-1">
+                    <p class="text-sm font-medium">${stop.name}</p>
+                    <p class="text-xs text-gray-500 dark:text-gray-400">${stop.time}</p>
+                </div>
+            `;
+            modalStops.appendChild(stopEl);
+        });
+
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+        setTimeout(() => {
+            modalContent.classList.remove('scale-95', 'opacity-0');
+            modalContent.classList.add('scale-100', 'opacity-100');
+        }, 10);
+    };
+
+    const closeTripDetail = () => {
+        modalContent.classList.add('scale-95', 'opacity-0');
+        modalContent.classList.remove('scale-100', 'opacity-100');
+        setTimeout(() => {
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }, 200);
+    };
+
+    closeModal.addEventListener('click', closeTripDetail);
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) closeTripDetail();
+    });
+
+    // Direction Toggle Logic
+    const setDirection = (dir) => {
+        state.currentDir = dir;
+        if (dir === 'broadway_to_botany') {
+            dirB2B.classList.add('bg-white', 'dark:bg-gray-700', 'shadow-sm');
+            dirB2B.classList.remove('text-gray-600', 'dark:text-gray-400');
+            dirB2BRev.classList.remove('bg-white', 'dark:bg-gray-700', 'shadow-sm');
+            dirB2BRev.classList.add('text-gray-600', 'dark:text-gray-400');
+        } else {
+            dirB2BRev.classList.add('bg-white', 'dark:bg-gray-700', 'shadow-sm');
+            dirB2BRev.classList.remove('text-gray-600', 'dark:text-gray-400');
+            dirB2B.classList.remove('bg-white', 'dark:bg-gray-700', 'shadow-sm');
+            dirB2B.classList.add('text-gray-600', 'dark:text-gray-400');
+        }
+        renderSchedule();
+    };
+
+    dirB2B.addEventListener('click', () => setDirection('broadway_to_botany'));
+    dirB2BRev.addEventListener('click', () => setDirection('botany_to_broadway'));
+
+    // Time Update Logic
+    const updateClock = () => {
+        state.currentTime = new Date();
+        const now = state.currentTime.toLocaleTimeString([], {
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: true
+        });
+        timeEl.textContent = now;
+        renderSchedule();
+    };
+
+    // Initialize everything
+    setInterval(updateClock, 1000);
+    updateClock();
+});

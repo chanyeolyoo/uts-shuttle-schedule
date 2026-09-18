@@ -135,34 +135,52 @@ document.addEventListener('DOMContentLoaded', () => {
                 listEl.innerHTML = `<p class="text-center text-gray-500 py-10">No data for direction: ${state.currentDir}</p>`;
                 return;
             }
-            const allTripsRaw = [...(dirData.am || []), ...(dirData.pm || [])];
-            const tripsWithStopTimes = allTripsRaw.map(trip => {
-                const stop = trip.stops.find(s => s.name === state.selectedStop);
-                return { ...trip, stopTime: stop ? stop.time : trip.departure };
+            const tripsWithTimes = allTripsRaw.map(trip => {
+                if (state.currentDir === 'broadway_to_botany') {
+                    const boardingStop = trip.stops.find(s => s.name === state.selectedStop);
+                    const alightingStop = trip.stops[trip.stops.length - 1];
+                    return {
+                        ...trip,
+                        boardingTime: boardingStop ? boardingStop.time : trip.departure,
+                        alightingTime: alightingStop.time,
+                        boardingStopName: state.selectedStop,
+                        alightingStopName: alightingStop.name
+                    };
+                } else {
+                    const boardingStop = trip.stops[0];
+                    const alightingStop = trip.stops.find(s => s.name === state.selectedStop);
+                    return {
+                        ...trip,
+                        boardingTime: boardingStop.time,
+                        alightingTime: alightingStop ? alightingStop.time : trip.departure,
+                        boardingStopName: boardingStop.name,
+                        alightingStopName: state.selectedStop
+                    };
+                }
             });
 
             const now = state.currentTime;
             const currentTimeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
-            // Filter out buses that have already passed
-            const futureTrips = tripsWithStopTimes.filter(trip => trip.stopTime >= currentTimeStr);
+            // Filter out buses that have already passed boarding point
+            const futureTrips = tripsWithTimes.filter(trip => trip.boardingTime >= currentTimeStr);
 
             let nextBusId = null;
             if (futureTrips.length > 0) {
                 nextBusId = futureTrips[0].id;
             }
 
-            // Sort: Next Bus first, then others chronologically
+            // Sort: Next Bus first, then others chronologically by boarding time
             const sortedTrips = [...futureTrips].sort((a, b) => {
                 if (a.id === nextBusId) return -1;
                 if (b.id === nextBusId) return 1;
-                return a.stopTime.localeCompare(b.stopTime);
+                return a.boardingTime.localeCompare(b.boardingTime);
             });
 
             // Logic for alerts
             if (nextBusId && state.alertsEnabled) {
                 const nextBus = futureTrips.find(t => t.id === nextBusId);
-                const [hrs, mins] = nextBus.stopTime.split(':').map(Number);
+                const [hrs, mins] = nextBus.boardingTime.split(':').map(Number);
                 const arrivalTime = new Date();
                 arrivalTime.setHours(hrs, mins, 0, 0);
                 if (arrivalTime < now) arrivalTime.setDate(arrivalTime.getDate() + 1);
@@ -172,7 +190,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     playAlertSound();
                     sendNotification(
                         'Bus Arrival Alert!',
-                        `The next bus to ${state.currentDir === 'broadway_to_botany' ? 'Botany' : 'Broadway'} arrives at ${state.selectedStop} in ${diffMins} minutes.`
+                        `The next bus to ${state.currentDir === 'broadway_to_botany' ? 'Botany' : state.selectedStop} arrives at ${state.currentDir === 'broadway_to_botany' ? state.selectedStop : 'Botany'} in ${diffMins} minutes.`
                     );
                 }
             }
@@ -188,22 +206,27 @@ document.addEventListener('DOMContentLoaded', () => {
                 card.className = `p-4 rounded-2xl cursor-pointer transition-all duration-200 transform active:scale-95 ${
                     isNext ? 'next-bus shadow-lg' : 'bg-white dark:bg-gray-800 shadow-sm'
                 }`;
-                const timeDisplay = trip.stopTime;
-                const destination = state.currentDir === 'broadway_to_botany' ? 'Botany (Lord St)' : 'Broadway (Thomas St)';
+
                 let timeUntil = '';
                 if (isNext) {
                     const depTime = new Date();
-                    const [hrs, mins] = trip.stopTime.split(':').map(Number);
+                    const [hrs, mins] = trip.boardingTime.split(':').map(Number);
                     depTime.setHours(hrs, mins, 0, 0);
                     if (depTime < now) depTime.setDate(depTime.getDate() + 1);
                     const diff = Math.round((depTime - now) / 60000);
                     timeUntil = `Leaves in ${diff}m`;
                 }
+
                 card.innerHTML = `
                     <div class="flex justify-between items-center">
-                        <div>
-                            <p class="text-2xl font-bold tabular-nums">${timeDisplay}</p>
-                            <p class="text-sm text-gray-500 dark:text-gray-400">${destination}</p>
+                        <div class="flex-1">
+                            <div class="flex items-baseline gap-2">
+                                <p class="text-2xl font-bold tabular-nums">${trip.boardingTime}</p>
+                                <p class="text-xs text-gray-400 dark:text-gray-500 font-medium"> $\rightarrow$ ${trip.alightingTime}</p>
+                            </div>
+                            <p class="text-sm text-gray-500 dark:text-gray-400">
+                                ${trip.boardingStopName} $\rightarrow$ ${trip.alightingStopName}
+                            </p>
                         </div>
                         <div class="text-right">
                             ${isNext ? `<span class="text-xs font-bold text-yellow-600 dark:text-yellow-400 block mb-1">NEXT BUS</span>` : ''}

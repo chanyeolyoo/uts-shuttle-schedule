@@ -149,6 +149,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 listEl.innerHTML = `<p class="text-center text-gray-500 py-10">No data for direction: ${state.currentDir}</p>`;
                 return;
             }
+            const allTripsRaw = [...(dirData.am || []), ...(dirData.pm || [])];
             const tripsWithTimes = allTripsRaw.map(trip => {
                 if (state.currentDir === 'broadway_to_botany') {
                     const boardingStop = trip.stops.find(s => s.name === state.selectedStop);

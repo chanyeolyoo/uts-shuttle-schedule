@@ -1,13 +1,12 @@
 document.addEventListener('DOMContentLoaded', () => {
     const state = {
         currentDir: 'broadway_to_botany',
-        selectedStop: null,
         currentTime: new Date(),
         selectedTrip: null,
+        selectedStop: '',
         reminderMins: 5,
-        notifiedBuses: new Set(),
         alertsEnabled: false,
-        audioCtx: null,
+        notifiedBuses: new Set()
     };
 
     // DOM Elements
@@ -15,109 +14,21 @@ document.addEventListener('DOMContentLoaded', () => {
     const listEl = document.getElementById('schedule-list');
     const dirB2B = document.getElementById('dir-b2b');
     const dirB2BRev = document.getElementById('dir-b2b_rev');
+    const themeToggle = document.getElementById('theme-toggle');
     const stopSelect = document.getElementById('stop-select');
     const alertMinsInput = document.getElementById('alert-mins');
     const btnNotifyPerm = document.getElementById('btn-notify-perm');
-    const themeToggle = document.getElementById('theme-toggle');
+    const btnLiveMap = document.getElementById('btn-live-map');
     const modal = document.getElementById('modal');
     const modalContent = document.getElementById('modal-content');
     const closeModal = document.getElementById('close-modal');
     const modalTripTime = document.getElementById('modal-trip-time');
     const modalDirection = document.getElementById('modal-direction');
     const modalStops = document.getElementById('modal-stops');
-
-    const btnLiveMap = document.getElementById('btn-live-map');
     const mapModal = document.getElementById('map-modal');
     const mapContent = document.getElementById('map-content');
     const closeMap = document.getElementById('close-map');
     const liveMapFrame = document.getElementById('live-map-frame');
-    const mapFallback = document.getElementById('map-fallback');
-
-    // --- Alert & Sound Logic ---
-
-    const playAlertSound = async () => {
-        try {
-            if (!state.audioCtx) return;
-            if (state.audioCtx.state === 'suspended') await state.audioCtx.resume();
-
-            const beep = (freq, duration, volume) => {
-                const osc = state.audioCtx.createOscillator();
-                const gain = state.audioCtx.createGain();
-                osc.type = 'sine';
-                osc.frequency.setValueAtTime(freq, state.audioCtx.currentTime);
-                gain.gain.setValueAtTime(volume, state.audioCtx.currentTime);
-                gain.gain.exponentialRampToValueAtTime(0.01, state.audioCtx.currentTime + duration);
-                osc.connect(gain);
-                gain.connect(state.audioCtx.destination);
-                osc.start();
-                osc.stop(state.audioCtx.currentTime + duration);
-            };
-
-            // Alarm sequence: 3 quick beeps
-            for (let i = 0; i < 3; i++) {
-                beep(880, 0.3, 0.2);
-                await new Promise(resolve => setTimeout(resolve, 400));
-            }
-        } catch (e) {
-            console.error('Audio alert failed:', e);
-        }
-    };
-
-    const sendNotification = async (title, body) => {
-        if (Notification.permission === 'granted') {
-            try {
-                const registration = await navigator.serviceWorker.ready;
-                registration.showNotification(title, {
-                    body: body,
-                    icon: 'https://cdn-icons-png.flaticon.com/512/3440/3440869.png',
-                    badge: 'https://cdn-icons-png.flaticon.com/512/3440/3440869.png',
-                    vibrate: [200, 100, 200],
-                    tag: 'bus-alert'
-                });
-            } catch (e) {
-                // Fallback to window notification if SW fails
-                new Notification(title, { body });
-            }
-        }
-    };
-
-    btnNotifyPerm.addEventListener('click', async () => {
-        if (state.alertsEnabled) {
-            state.alertsEnabled = false;
-            btnNotifyPerm.classList.remove('bg-green-100', 'dark:bg-green-900/30', 'text-green-600', 'dark:text-green-400');
-            btnNotifyPerm.classList.add('bg-blue-100', 'dark:bg-blue-900/30', 'text-blue-600', 'dark:text-blue-400');
-            btnNotifyPerm.innerHTML = '<i class="fas fa-bell"></i> Enable Alerts';
-            alert('Alerts disabled.');
-            return;
-        }
-
-        let permission = Notification.permission;
-        if (permission === 'default') {
-            permission = await Notification.requestPermission();
-        }
-        // Initialize AudioContext on user gesture to bypass autoplay blocks
-        if (!state.audioCtx) {
-            state.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        }
-
-        if (permission === 'granted') {
-            state.alertsEnabled = true;
-            btnNotifyPerm.classList.remove('bg-blue-100', 'dark:bg-blue-900/30', 'text-blue-600', 'dark:text-blue-400');
-            btnNotifyPerm.classList.add('bg-green-100', 'dark:bg-green-900/30', 'text-green-600', 'dark:text-green-400');
-            btnNotifyPerm.innerHTML = '<i class="fas fa-check-circle"></i> Alerts On';
-            alert('Notifications enabled! You will be alerted when your bus is close.');
-        } else {
-            state.alertsEnabled = true;
-            btnNotifyPerm.classList.remove('bg-blue-100', 'dark:bg-blue-900/30', 'text-blue-600', 'dark:text-blue-400');
-            btnNotifyPerm.classList.add('bg-green-100', 'dark:bg-green-900/30', 'text-green-600', 'dark:text-green-400');
-            btnNotifyPerm.innerHTML = '<i class="fas fa-volume-up"></i> Audio Alerts On';
-            alert('Notification permission ' + permission + '. You will still hear audio alerts if the tab is open.');
-        }
-    });
-
-    alertMinsInput.addEventListener('change', (e) => {
-        state.reminderMins = parseInt(e.target.value) || 5;
-    });
 
     // --- Theme Logic ---
     const updateTheme = (isDark) => {
@@ -140,29 +51,54 @@ document.addEventListener('DOMContentLoaded', () => {
         document.documentElement.classList.add('dark');
     }
 
-    // Station Selection Logic
-    const updateStopOptions = () => {
-        if (!window.busData) return;
+    // --- Alert Utilities ---
+    const playAlertSound = () => {
+        try {
+            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+
+            oscillator.type = 'sine';
+            oscillator.frequency.setValueAtTime(880, audioCtx.currentTime); // A5
+            gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
+
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+
+            oscillator.start();
+            oscillator.stop(audioCtx.currentTime + 0.5);
+        } catch (e) {
+            console.error('Audio playback failed:', e);
+        }
+    };
+
+    const sendNotification = (title, body) => {
+        if (Notification.permission === 'granted') {
+            new Notification(title, { body });
+        }
+    };
+
+    // --- Schedule Logic ---
+    const populateStops = () => {
         const dirData = window.busData[state.currentDir];
-        const firstTrip = dirData.am[0] || dirData.pm[0];
+        if (!dirData) return;
+
+        // Use the first trip's stops as the definitive list for this direction
+        const firstTrip = [...(dirData.am || []), ...(dirData.pm || [])][0];
         if (!firstTrip) return;
-        const availableStops = firstTrip.stops.slice(0, -1);
+
         stopSelect.innerHTML = '';
-        availableStops.forEach(stop => {
-            const option = document.createElement('option');
-            option.value = stop.name;
-            option.textContent = stop.name;
-            stopSelect.appendChild(option);
+        firstTrip.stops.forEach(stop => {
+            const opt = document.createElement('option');
+            opt.value = stop.name;
+            opt.textContent = stop.name;
+            stopSelect.appendChild(opt);
         });
+
         state.selectedStop = stopSelect.value;
     };
 
-    stopSelect.addEventListener('change', () => {
-        state.selectedStop = stopSelect.value;
-        renderSchedule();
-    });
-
-    // Schedule Rendering Logic
     const renderSchedule = () => {
         try {
             if (!window.busData) {
@@ -183,16 +119,24 @@ document.addEventListener('DOMContentLoaded', () => {
             const now = state.currentTime;
             const currentTimeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
+            // Filter out buses that have already passed
+            const futureTrips = tripsWithStopTimes.filter(trip => trip.stopTime >= currentTimeStr);
+
             let nextBusId = null;
-            for (const trip of tripsWithStopTimes) {
-                if (trip.stopTime >= currentTimeStr) {
-                    nextBusId = trip.id;
-                    break;
-                }
+            if (futureTrips.length > 0) {
+                nextBusId = futureTrips[0].id;
             }
 
+            // Sort: Next Bus first, then others chronologically
+            const sortedTrips = [...futureTrips].sort((a, b) => {
+                if (a.id === nextBusId) return -1;
+                if (b.id === nextBusId) return 1;
+                return a.stopTime.localeCompare(b.stopTime);
+            });
+
+            // Logic for alerts
             if (nextBusId && state.alertsEnabled) {
-                const nextBus = tripsWithStopTimes.find(t => t.id === nextBusId);
+                const nextBus = futureTrips.find(t => t.id === nextBusId);
                 const [hrs, mins] = nextBus.stopTime.split(':').map(Number);
                 const arrivalTime = new Date();
                 arrivalTime.setHours(hrs, mins, 0, 0);
@@ -208,15 +152,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
 
-            const sortedTrips = [...tripsWithStopTimes].sort((a, b) => {
-                if (a.id === nextBusId) return -1;
-                if (b.id === nextBusId) return 1;
-                return a.stopTime.localeCompare(b.stopTime);
-            });
-
             listEl.innerHTML = '';
             if (sortedTrips.length === 0) {
-                listEl.innerHTML = '<p class="text-center text-gray-500 py-10">No buses scheduled.</p>';
+                listEl.innerHTML = '<p class="text-center text-gray-500 py-10">No more buses scheduled for today.</p>';
                 return;
             }
             sortedTrips.forEach(trip => {
@@ -258,29 +196,33 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
+    // --- Modal Logic ---
     const openTripDetail = (trip) => {
         state.selectedTrip = trip;
         modalTripTime.textContent = trip.departure;
         modalDirection.textContent = state.currentDir === 'broadway_to_botany' ? 'Broadway &rarr; Botany' : 'Botany &rarr; Broadway';
+
         modalStops.innerHTML = '';
         trip.stops.forEach((stop, index) => {
             const stopEl = document.createElement('div');
             stopEl.className = 'flex items-center gap-4 relative';
+
             const isFirst = index === 0;
             const isLast = index === trip.stops.length - 1;
-            const isSelected = stop.name === state.selectedStop;
+
             stopEl.innerHTML = `
                 <div class="flex flex-col items-center">
-                    <div class="w-4 h-4 rounded-full z-10 ${isSelected ? 'bg-yellow-500 ring-4 ring-yellow-200 dark:ring-yellow-900' : isFirst ? 'bg-blue-500' : isLast ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'}"></div>
+                    <div class="w-4 h-4 rounded-full z-10 ${isFirst ? 'bg-blue-500' : isLast ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'}"></div>
                     ${!isLast ? '<div class="w-0.5 h-full bg-gray-200 dark:bg-gray-700 absolute top-4 bottom-0"></div>' : ''}
                 </div>
-                <div class="flex-1 ${isSelected ? 'bg-yellow-50 dark:bg-yellow-900/20 p-2 rounded-lg' : ''}">
-                    <p class="text-sm font-medium ${isSelected ? 'text-yellow-700 dark:text-yellow-300' : ''}">${stop.name}</p>
+                <div class="flex-1">
+                    <p class="text-sm font-medium">${stop.name}</p>
                     <p class="text-xs text-gray-500 dark:text-gray-400">${stop.time}</p>
                 </div>
             `;
             modalStops.appendChild(stopEl);
         });
+
         modal.classList.remove('hidden');
         modal.classList.add('flex');
         setTimeout(() => {
@@ -303,30 +245,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (e.target === modal) closeTripDetail();
     });
 
-    const openMapModal = () => {
-        const mapUrl = 'https://maps.busminder.com.au/route/live/a6d25365-6b07-4546-9d4f-52ea8d1785e4';
-        liveMapFrame.src = mapUrl;
-        mapModal.classList.remove('hidden');
-        mapModal.classList.add('flex');
-        setTimeout(() => {
-            mapContent.classList.remove('translate-y-full');
-            mapContent.classList.add('translate-y-0');
-        }, 10);
-    };
-
-    const closeMapModal = () => {
-        mapContent.classList.add('translate-y-full');
-        mapContent.classList.remove('translate-y-0');
-        setTimeout(() => {
-            mapModal.classList.add('hidden');
-            mapModal.classList.remove('flex');
-            liveMapFrame.src = '';
-        }, 300);
-    };
-
-    btnLiveMap.addEventListener('click', openMapModal);
-    closeMap.addEventListener('click', closeMapModal);
-
+    // --- Direction Toggle Logic ---
     const setDirection = (dir) => {
         state.currentDir = dir;
         if (dir === 'broadway_to_botany') {
@@ -340,13 +259,54 @@ document.addEventListener('DOMContentLoaded', () => {
             dirB2B.classList.remove('bg-white', 'dark:bg-gray-700', 'shadow-sm');
             dirB2B.classList.add('text-gray-600', 'dark:text-gray-400');
         }
-        updateStopOptions();
+        populateStops();
         renderSchedule();
     };
 
     dirB2B.addEventListener('click', () => setDirection('broadway_to_botany'));
     dirB2BRev.addEventListener('click', () => setDirection('botany_to_broadway'));
 
+    // --- Stop Selection & Alerts Logic ---
+    stopSelect.addEventListener('change', () => {
+        state.selectedStop = stopSelect.value;
+        renderSchedule();
+    });
+
+    alertMinsInput.addEventListener('input', () => {
+        state.reminderMins = parseInt(alertMinsInput.value, 10) || 5;
+    });
+
+    btnNotifyPerm.addEventListener('click', () => {
+        Notification.requestPermission().then(permission => {
+            if (permission === 'granted') {
+                state.alertsEnabled = true;
+                alert('Notifications enabled!');
+            } else {
+                alert('Notifications permission denied.');
+            }
+        });
+    });
+
+    // --- Live Map Logic ---
+    btnLiveMap.addEventListener('click', () => {
+        liveMapFrame.src = 'https://maps.busminder.com.au/route/live/a6d25365-6b07-4546-9d4f-52ea8d1785e4';
+        mapModal.classList.remove('hidden');
+        mapModal.classList.add('flex');
+        setTimeout(() => {
+            mapContent.classList.remove('translate-y-full');
+        }, 10);
+    });
+
+    closeMap.addEventListener('click', () => {
+        mapContent.classList.add('translate-y-full');
+        setTimeout(() => {
+            mapModal.classList.add('hidden');
+            mapModal.classList.remove('flex');
+            liveMapFrame.src = ''; // Stop loading/playing
+        }, 300);
+    });
+
+    // --- Time Update Logic ---
     const updateClock = () => {
         state.currentTime = new Date();
         const now = state.currentTime.toLocaleTimeString([], {
@@ -358,7 +318,8 @@ document.addEventListener('DOMContentLoaded', () => {
         renderSchedule();
     };
 
-    updateStopOptions();
+    // Initialize everything
+    populateStops();
     setInterval(updateClock, 1000);
     updateClock();
 });

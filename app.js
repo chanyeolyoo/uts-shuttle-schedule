@@ -163,7 +163,13 @@ document.addEventListener('DOMContentLoaded', () => {
             const currentTimeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
             // Filter out buses that have already passed boarding point
-            const futureTrips = tripsWithTimes.filter(trip => trip.boardingTime >= currentTimeStr);
+            let futureTrips = tripsWithTimes.filter(trip => trip.boardingTime >= currentTimeStr);
+            let isNextDay = false;
+
+            if (futureTrips.length === 0) {
+                isNextDay = true;
+                futureTrips = tripsWithTimes; // Show all trips for the next day
+            }
 
             let nextBusId = null;
             if (futureTrips.length > 0) {
@@ -212,7 +218,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     const depTime = new Date();
                     const [hrs, mins] = trip.boardingTime.split(':').map(Number);
                     depTime.setHours(hrs, mins, 0, 0);
-                    if (depTime < now) depTime.setDate(depTime.getDate() + 1);
+                    if (depTime < now || isNextDay) {
+                        if (isNextDay) {
+                            depTime.setDate(depTime.getDate() + 1);
+                        } else if (depTime < now) {
+                            depTime.setDate(depTime.getDate() + 1);
+                        }
+                    }
                     const diff = Math.round((depTime - now) / 60000);
                     timeUntil = `Leaves in ${diff}m`;
                 }
@@ -221,6 +233,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div class="flex justify-between items-center">
                         <div class="flex-1">
                             <div class="flex items-baseline gap-2">
+                                ${isNextDay ? '<span class="text-[10px] font-bold uppercase text-blue-500 dark:text-blue-400 mr-1">Tomorrow</span>' : ''}
                                 <p class="text-2xl font-bold tabular-nums">${trip.boardingTime}</p>
                                 <p class="text-xs text-gray-400 dark:text-gray-500 font-medium"> $\rightarrow$ ${trip.alightingTime}</p>
                             </div>

@@ -80,6 +80,20 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     // --- Schedule Logic ---
+    const getNextServiceDay = (currentDate) => {
+        const serviceDays = window.busData.serviceDays || [1, 2, 3, 4, 5];
+        let dayOffset = 0;
+        while (true) {
+            const checkDate = new Date(currentDate);
+            checkDate.setDate(currentDate.getDate() + dayOffset);
+            if (serviceDays.includes(checkDate.getDay())) {
+                return { offset: dayOffset, dayName: checkDate.toLocaleDateString('en-US', { weekday: 'long' }) };
+            }
+            dayOffset++;
+            if (dayOffset > 7) return { offset: 0, dayName: '' }; // Safety break
+        }
+    };
+
     const populateStops = () => {
         const dirData = window.busData[state.currentDir];
         if (!dirData) return;
@@ -163,12 +177,33 @@ document.addEventListener('DOMContentLoaded', () => {
             const currentTimeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
             // Filter out buses that have already passed boarding point
-            let futureTrips = tripsWithTimes.filter(trip => trip.boardingTime >= currentTimeStr);
+            const serviceInfo = getNextServiceDay(now);
+            const isTodayServiceDay = serviceInfo.offset === 0;
+
+            let futureTrips = [];
+            if (isTodayServiceDay) {
+                futureTrips = tripsWithTimes.filter(trip => trip.boardingTime >= currentTimeStr);
+            }
+
             let isNextDay = false;
+            let displayDay = '';
 
             if (futureTrips.length === 0) {
                 isNextDay = true;
-                futureTrips = tripsWithTimes; // Show all trips for the next day
+                futureTrips = tripsWithTimes;
+                if (isTodayServiceDay) {
+                    const tomorrow = new Date(now);
+                    tomorrow.setDate(now.getDate() + 1);
+                    const nextDayInfo = getNextServiceDay(tomorrow);
+                    state.dayOffset = 1 + nextDayInfo.offset;
+                    displayDay = nextDayInfo.dayName;
+                } else {
+                    state.dayOffset = serviceInfo.offset;
+                    displayDay = serviceInfo.dayName;
+                }
+            } else {
+                state.dayOffset = 0;
+                displayDay = '';
             }
 
             let nextBusId = null;
@@ -189,7 +224,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 const [hrs, mins] = nextBus.boardingTime.split(':').map(Number);
                 const arrivalTime = new Date();
                 arrivalTime.setHours(hrs, mins, 0, 0);
-                if (arrivalTime < now) arrivalTime.setDate(arrivalTime.getDate() + 1);
+                arrivalTime.setDate(arrivalTime.getDate() + (state.dayOffset || 0));
+
                 const diffMins = Math.round((arrivalTime - now) / 60000);
                 if (diffMins <= state.reminderMins && !state.notifiedBuses.has(nextBusId)) {
                     state.notifiedBuses.add(nextBusId);
@@ -218,13 +254,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     const depTime = new Date();
                     const [hrs, mins] = trip.boardingTime.split(':').map(Number);
                     depTime.setHours(hrs, mins, 0, 0);
-                    if (depTime < now || isNextDay) {
-                        if (isNextDay) {
-                            depTime.setDate(depTime.getDate() + 1);
-                        } else if (depTime < now) {
-                            depTime.setDate(depTime.getDate() + 1);
-                        }
-                    }
+                    depTime.setDate(depTime.getDate() + (state.dayOffset || 0));
+
                     const diff = Math.round((depTime - now) / 60000);
                     timeUntil = `Leaves in ${diff}m`;
                 }
@@ -233,7 +264,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div class="flex justify-between items-center">
                         <div class="flex-1">
                             <div class="flex items-baseline gap-2">
-                                ${isNextDay ? '<span class="text-[10px] font-bold uppercase text-blue-500 dark:text-blue-400 mr-1">Tomorrow</span>' : ''}
+                                ${isNextDay ? `<span class="text-[10px] font-bold uppercase text-blue-500 dark:text-blue-400 mr-1">${displayDay}</span>` : ''}
                                 <p class="text-2xl font-bold tabular-nums">${trip.boardingTime}</p>
                                 <p class="text-xs text-gray-400 dark:text-gray-500 font-medium"> $\rightarrow$ ${trip.alightingTime}</p>
                             </div>

@@ -1,4 +1,5 @@
 window.busData = {
+  "serviceDays": [1, 2, 3, 4, 5],
   "broadway_to_botany": {
     "am": [
       { "id": "B2B_AM_1", "departure": "07:00", "stops": [

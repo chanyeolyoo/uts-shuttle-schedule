@@ -15,7 +15,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const dirB2B = document.getElementById('dir-b2b');
     const dirB2BRev = document.getElementById('dir-b2b_rev');
     const themeToggle = document.getElementById('theme-toggle');
-    const stopSelect = document.getElementById('stop-select');
+    const stopSelector = document.getElementById('stop-selector');
     const alertMinsInput = document.getElementById('alert-mins');
     const btnNotifyPerm = document.getElementById('btn-notify-perm');
     const btnLiveMap = document.getElementById('btn-live-map');
@@ -84,19 +84,44 @@ document.addEventListener('DOMContentLoaded', () => {
         const dirData = window.busData[state.currentDir];
         if (!dirData) return;
 
-        // Use the first trip's stops as the definitive list for this direction
         const firstTrip = [...(dirData.am || []), ...(dirData.pm || [])][0];
         if (!firstTrip) return;
 
-        stopSelect.innerHTML = '';
-        firstTrip.stops.forEach(stop => {
-            const opt = document.createElement('option');
-            opt.value = stop.name;
-            opt.textContent = stop.name;
-            stopSelect.appendChild(opt);
-        });
+        // Ensure a valid stop is selected for this direction
+        if (!state.selectedStop || !firstTrip.stops.some(s => s.name === state.selectedStop)) {
+            state.selectedStop = firstTrip.stops[0].name;
+        }
 
-        state.selectedStop = stopSelect.value;
+        stopSelector.innerHTML = '';
+        firstTrip.stops.forEach((stop, index) => {
+            const isSelected = state.selectedStop === stop.name;
+
+            const stopContainer = document.createElement('div');
+            stopContainer.className = `flex flex-col items-center cursor-pointer group transition-all duration-200 ${isSelected ? 'scale-110' : ''}`;
+
+            stopContainer.innerHTML = `
+                <div class="w-4 h-4 rounded-full border-2 transition-all duration-200 ${
+                    isSelected ? 'bg-blue-600 border-blue-600' : 'bg-white border-gray-400 dark:bg-gray-800 dark:border-gray-500'
+                }"></div>
+                <span class="text-[10px] mt-2 transition-all duration-200 ${
+                    isSelected ? 'font-bold text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400'
+                }">${stop.name}</span>
+            `;
+
+            stopContainer.addEventListener('click', () => {
+                state.selectedStop = stop.name;
+                populateStops();
+                renderSchedule();
+            });
+
+            stopSelector.appendChild(stopContainer);
+
+            if (index < firstTrip.stops.length - 1) {
+                const line = document.createElement('div');
+                line.className = 'flex-1 h-0.5 bg-gray-300 dark:bg-gray-700 mt-2';
+                stopSelector.appendChild(line);
+            }
+        });
     };
 
     const renderSchedule = () => {
@@ -267,10 +292,6 @@ document.addEventListener('DOMContentLoaded', () => {
     dirB2BRev.addEventListener('click', () => setDirection('botany_to_broadway'));
 
     // --- Stop Selection & Alerts Logic ---
-    stopSelect.addEventListener('change', () => {
-        state.selectedStop = stopSelect.value;
-        renderSchedule();
-    });
 
     alertMinsInput.addEventListener('input', () => {
         state.reminderMins = parseInt(alertMinsInput.value, 10) || 5;

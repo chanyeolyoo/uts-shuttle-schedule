@@ -267,10 +267,10 @@ document.addEventListener('DOMContentLoaded', () => {
                             <div class="flex items-baseline gap-2">
                                 ${isNextDay ? `<span class="text-[10px] font-bold uppercase text-blue-500 dark:text-blue-400 mr-1">${displayDay}</span>` : ''}
                                 <p class="text-2xl font-bold tabular-nums">${trip.boardingTime}</p>
-                                <p class="text-xs text-gray-400 dark:text-gray-500 font-medium"> &rarr; ${trip.alightingTime}</p>
+                                <p class="text-xs text-gray-400 dark:text-gray-500 font-medium"> → ${trip.alightingTime}</p>
                             </div>
                             <p class="text-sm text-gray-500 dark:text-gray-400">
-                                ${trip.boardingStopName} &rarr; ${trip.alightingStopName}
+                                ${trip.boardingStopName} → ${trip.alightingStopName}
                             </p>
                         </div>
                         <div class="text-right">
@@ -293,7 +293,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const openTripDetail = (trip) => {
         state.selectedTrip = trip;
         modalTripTime.textContent = trip.departure;
-        modalDirection.textContent = state.currentDir === 'broadway_to_botany' ? 'Broadway &rarr; Botany' : 'Botany &rarr; Broadway';
+        modalDirection.innerHTML = state.currentDir === 'broadway_to_botany' ? 'Broadway → Botany' : 'Botany → Broadway';
 
         modalStops.innerHTML = '';
         trip.stops.forEach((stop, index) => {

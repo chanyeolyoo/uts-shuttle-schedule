@@ -101,13 +101,16 @@ document.addEventListener('DOMContentLoaded', () => {
         const firstTrip = [...(dirData.am || []), ...(dirData.pm || [])][0];
         if (!firstTrip) return;
 
+        // Filter out Botany (Lord St) as it's either the absolute start or absolute end
+        const availableStops = firstTrip.stops.filter(stop => stop.name !== 'Botany (Lord St)');
+
         // Ensure a valid stop is selected for this direction
-        if (!state.selectedStop || !firstTrip.stops.some(s => s.name === state.selectedStop)) {
-            state.selectedStop = firstTrip.stops[0].name;
+        if (!state.selectedStop || !availableStops.some(s => s.name === state.selectedStop)) {
+            state.selectedStop = availableStops[0].name;
         }
 
         stopSelector.innerHTML = '';
-        firstTrip.stops.forEach((stop, index) => {
+        availableStops.forEach((stop, index) => {
             const isSelected = state.selectedStop === stop.name;
 
             const stopContainer = document.createElement('div');
@@ -130,7 +133,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             stopSelector.appendChild(stopContainer);
 
-            if (index < firstTrip.stops.length - 1) {
+            if (index < availableStops.length - 1) {
                 const line = document.createElement('div');
                 line.className = 'flex-1 h-0.5 bg-gray-300 dark:bg-gray-700 mt-2';
                 stopSelector.appendChild(line);

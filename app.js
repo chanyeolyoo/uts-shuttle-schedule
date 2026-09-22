@@ -101,39 +101,45 @@ document.addEventListener('DOMContentLoaded', () => {
         const firstTrip = [...(dirData.am || []), ...(dirData.pm || [])][0];
         if (!firstTrip) return;
 
-        // Filter out Botany (Lord St) as it's either the absolute start or absolute end
-        const availableStops = firstTrip.stops.filter(stop => stop.name !== 'Botany (Lord St)');
-
-        // Ensure a valid stop is selected for this direction
-        if (!state.selectedStop || !availableStops.some(s => s.name === state.selectedStop)) {
-            state.selectedStop = availableStops[0].name;
+        // Ensure a valid selectable stop is selected for this direction
+        const selectableStops = firstTrip.stops.filter(s => s.name !== 'Botany (Lord St)');
+        if (!state.selectedStop || !selectableStops.some(s => s.name === state.selectedStop)) {
+            state.selectedStop = selectableStops[0].name;
         }
 
         stopSelector.innerHTML = '';
-        availableStops.forEach((stop, index) => {
-            const isSelected = state.selectedStop === stop.name;
+        firstTrip.stops.forEach((stop, index) => {
+            const isBotany = stop.name === 'Botany (Lord St)';
+            const isSelected = !isBotany && state.selectedStop === stop.name;
 
             const stopContainer = document.createElement('div');
-            stopContainer.className = `flex flex-col items-center cursor-pointer group transition-all duration-200 ${isSelected ? 'scale-110' : ''}`;
+            stopContainer.className = `flex flex-col items-center transition-all duration-200 ${
+                isSelected ? 'scale-110 cursor-pointer' :
+                isBotany ? 'cursor-default' : 'cursor-pointer'
+            }`;
 
             stopContainer.innerHTML = `
                 <div class="w-4 h-4 rounded-full border-2 transition-all duration-200 ${
-                    isSelected ? 'bg-blue-600 border-blue-600' : 'bg-white border-gray-400 dark:bg-gray-800 dark:border-gray-500'
+                    isSelected ? 'bg-blue-600 border-blue-600' :
+                    isBotany ? 'bg-gray-400 border-gray-500 opacity-60' : 'bg-white border-gray-400 dark:bg-gray-800 dark:border-gray-500'
                 }"></div>
                 <span class="text-[10px] mt-2 transition-all duration-200 ${
-                    isSelected ? 'font-bold text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400'
+                    isSelected ? 'font-bold text-blue-600 dark:text-blue-400' :
+                    isBotany ? 'text-gray-400 dark:text-gray-600 italic' : 'text-gray-500 dark:text-gray-400'
                 }">${stop.name}</span>
             `;
 
-            stopContainer.addEventListener('click', () => {
-                state.selectedStop = stop.name;
-                populateStops();
-                renderSchedule();
-            });
+            if (!isBotany) {
+                stopContainer.addEventListener('click', () => {
+                    state.selectedStop = stop.name;
+                    populateStops();
+                    renderSchedule();
+                });
+            }
 
             stopSelector.appendChild(stopContainer);
 
-            if (index < availableStops.length - 1) {
+            if (index < firstTrip.stops.length - 1) {
                 const line = document.createElement('div');
                 line.className = 'flex-1 h-0.5 bg-gray-300 dark:bg-gray-700 mt-2';
                 stopSelector.appendChild(line);

@@ -6,7 +6,8 @@ document.addEventListener('DOMContentLoaded', () => {
         selectedStop: '',
         reminderMins: 5,
         alertsEnabled: false,
-        notifiedBuses: new Set()
+        notifiedBuses: new Set(),
+        dayOffset: 0
     };
 
     // DOM Elements
@@ -30,6 +31,55 @@ document.addEventListener('DOMContentLoaded', () => {
     const closeMap = document.getElementById('close-map');
     const liveMapFrame = document.getElementById('live-map-frame');
 
+    // --- Utilities ---
+    const TimeUtils = {
+        to24h: (date) => {
+            return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+        },
+        to12h: (date) => {
+            return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+        },
+        parseTime: (timeStr) => {
+            const [hrs, mins] = timeStr.split(':').map(Number);
+            const date = new Date();
+            date.setHours(hrs, mins, 0, 0);
+            return date;
+        }
+    };
+
+    const getProcessedTrips = (trips, direction, selectedStop) => {
+        return trips.map(trip => {
+            if (direction === 'broadway_to_botany') {
+                const boardingStop = trip.stops.find(s => s.name === selectedStop);
+                const alightingStop = trip.stops[trip.stops.length - 1];
+                return {
+                    ...trip,
+                    boardingTime: boardingStop ? boardingStop.time : trip.departure,
+                    alightingTime: alightingStop.time,
+                    boardingStopName: selectedStop,
+                    alightingStopName: alightingStop.name
+                };
+            } else {
+                const boardingStop = trip.stops[0];
+                const alightingStop = trip.stops.find(s => s.name === selectedStop);
+                return {
+                    ...trip,
+                    boardingTime: boardingStop.time,
+                    alightingTime: alightingStop ? alightingStop.time : trip.departure,
+                    boardingStopName: boardingStop.name,
+                    alightingStopName: selectedStop
+                };
+            }
+        });
+    };
+
+    const filterFutureTrips = (trips, currentTimeStr, isTodayServiceDay) => {
+        if (isTodayServiceDay) {
+            return trips.filter(trip => trip.boardingTime >= currentTimeStr);
+        }
+        return trips;
+    };
+
     // --- Theme Logic ---
     const updateTheme = (isDark) => {
         if (isDark) {
@@ -50,6 +100,31 @@ document.addEventListener('DOMContentLoaded', () => {
         (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
         document.documentElement.classList.add('dark');
     }
+
+    const checkAlerts = (nextBusId) => {
+        if (!nextBusId || !state.alertsEnabled) return;
+
+        const processedTrips = getProcessedTrips(
+            [...(window.busData[state.currentDir].am || []), ...(window.busData[state.currentDir].pm || [])],
+            state.currentDir,
+            state.selectedStop
+        );
+        const nextBus = processedTrips.find(t => t.id === nextBusId);
+        if (!nextBus) return;
+
+        const arrivalTime = TimeUtils.parseTime(nextBus.boardingTime);
+        arrivalTime.setDate(arrivalTime.getDate() + state.dayOffset);
+
+        const diffMins = Math.round((arrivalTime - state.currentTime) / 60000);
+        if (diffMins <= state.reminderMins && !state.notifiedBuses.has(nextBusId)) {
+            state.notifiedBuses.add(nextBusId);
+            playAlertSound();
+            sendNotification(
+                'Bus Arrival Alert!',
+                `The next bus to ${state.currentDir === 'broadway_to_botany' ? 'Botany' : state.selectedStop} arrives at ${state.currentDir === 'broadway_to_botany' ? state.selectedStop : 'Botany'} in ${diffMins} minutes.`
+            );
+        }
+    };
 
     // --- Alert Utilities ---
     const playAlertSound = () => {
@@ -159,41 +234,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
             const allTripsRaw = [...(dirData.am || []), ...(dirData.pm || [])];
-            const tripsWithTimes = allTripsRaw.map(trip => {
-                if (state.currentDir === 'broadway_to_botany') {
-                    const boardingStop = trip.stops.find(s => s.name === state.selectedStop);
-                    const alightingStop = trip.stops[trip.stops.length - 1];
-                    return {
-                        ...trip,
-                        boardingTime: boardingStop ? boardingStop.time : trip.departure,
-                        alightingTime: alightingStop.time,
-                        boardingStopName: state.selectedStop,
-                        alightingStopName: alightingStop.name
-                    };
-                } else {
-                    const boardingStop = trip.stops[0];
-                    const alightingStop = trip.stops.find(s => s.name === state.selectedStop);
-                    return {
-                        ...trip,
-                        boardingTime: boardingStop.time,
-                        alightingTime: alightingStop ? alightingStop.time : trip.departure,
-                        boardingStopName: boardingStop.name,
-                        alightingStopName: state.selectedStop
-                    };
-                }
-            });
+            const tripsWithTimes = getProcessedTrips(allTripsRaw, state.currentDir, state.selectedStop);
 
             const now = state.currentTime;
-            const currentTimeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+            const currentTimeStr = TimeUtils.to24h(now);
 
             // Filter out buses that have already passed boarding point
             const serviceInfo = getNextServiceDay(now);
             const isTodayServiceDay = serviceInfo.offset === 0;
 
-            let futureTrips = [];
-            if (isTodayServiceDay) {
-                futureTrips = tripsWithTimes.filter(trip => trip.boardingTime >= currentTimeStr);
-            }
+            const futureTrips = filterFutureTrips(tripsWithTimes, currentTimeStr, isTodayServiceDay);
 
             let isNextDay = false;
             let displayDay = '';
@@ -229,23 +279,8 @@ document.addEventListener('DOMContentLoaded', () => {
             });
 
             // Logic for alerts
-            if (nextBusId && state.alertsEnabled) {
-                const nextBus = futureTrips.find(t => t.id === nextBusId);
-                const [hrs, mins] = nextBus.boardingTime.split(':').map(Number);
-                const arrivalTime = new Date();
-                arrivalTime.setHours(hrs, mins, 0, 0);
-                arrivalTime.setDate(arrivalTime.getDate() + (state.dayOffset || 0));
+            checkAlerts(nextBusId);
 
-                const diffMins = Math.round((arrivalTime - now) / 60000);
-                if (diffMins <= state.reminderMins && !state.notifiedBuses.has(nextBusId)) {
-                    state.notifiedBuses.add(nextBusId);
-                    playAlertSound();
-                    sendNotification(
-                        'Bus Arrival Alert!',
-                        `The next bus to ${state.currentDir === 'broadway_to_botany' ? 'Botany' : state.selectedStop} arrives at ${state.currentDir === 'broadway_to_botany' ? state.selectedStop : 'Botany'} in ${diffMins} minutes.`
-                    );
-                }
-            }
 
             listEl.innerHTML = '';
             if (sortedTrips.length === 0) {
@@ -407,12 +442,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Time Update Logic ---
     const updateClock = () => {
         state.currentTime = new Date();
-        const now = state.currentTime.toLocaleTimeString([], {
-            hour: '2-digit',
-            minute: '2-digit',
-            hour12: true
-        });
-        timeEl.textContent = now;
+        timeEl.textContent = TimeUtils.to12h(state.currentTime);
         renderSchedule();
     };
 

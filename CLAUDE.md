@@ -24,6 +24,10 @@ The application enforces specific boarding and alighting restrictions based on d
 - **Service Days**: The app uses `window.busData.serviceDays` (default: Mon-Fri) to determine when the bus operates.
 - **Multi-Day Fallback**: If no more trips are available for the current day (or today is a non-service day), the app automatically displays the schedule for the **next available service day**.
 - **Time Calculation**: All countdowns and notifications account for multi-day offsets (e.g., Friday evening $\rightarrow$ Monday morning).
+- **Utilities**:
+    - `TimeUtils`: Standardizes time formatting between 24h (logic) and 12h (display) and handles string-to-date parsing.
+    - `getProcessedTrips`: Centralizes the mapping of raw timetable data to direction-specific boarding/alighting times.
+    - `filterFutureTrips`: Encapsulates the logic for filtering trips based on the current time and service day.
 
 ### UI/UX Features
 - **Interactive Stop Selector**: A visual route map (`O---O---O`) replaces standard dropdowns. Selecting a stop highlights the node and text in bold blue.

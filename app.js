@@ -243,7 +243,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const serviceInfo = getNextServiceDay(now);
             const isTodayServiceDay = serviceInfo.offset === 0;
 
-            const futureTrips = filterFutureTrips(tripsWithTimes, currentTimeStr, isTodayServiceDay);
+            let futureTrips = filterFutureTrips(tripsWithTimes, currentTimeStr, isTodayServiceDay);
 
             let isNextDay = false;
             let displayDay = '';

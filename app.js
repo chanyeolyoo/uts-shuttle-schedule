@@ -39,6 +39,9 @@ document.addEventListener('DOMContentLoaded', () => {
         to12h: (date) => {
             return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
         },
+        format12h: (timeStr) => {
+            return TimeUtils.to12h(TimeUtils.parseTime(timeStr));
+        },
         parseTime: (timeStr) => {
             const [hrs, mins] = timeStr.split(':').map(Number);
             const date = new Date();
@@ -310,8 +313,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         <div class="flex-1">
                             <div class="flex items-baseline gap-2">
                                 ${isNextDay ? `<span class="text-[10px] font-bold uppercase text-blue-500 dark:text-blue-400 mr-1">${displayDay}</span>` : ''}
-                                <p class="text-2xl font-bold tabular-nums">${trip.boardingTime}</p>
-                                <p class="text-xs text-gray-400 dark:text-gray-500 font-medium"> → ${trip.alightingTime}</p>
+                                <p class="text-2xl font-bold tabular-nums">${TimeUtils.format12h(trip.boardingTime)}</p>
+                                <p class="text-xs text-gray-400 dark:text-gray-500 font-medium"> → ${TimeUtils.format12h(trip.alightingTime)}</p>
                             </div>
                             <p class="text-sm text-gray-500 dark:text-gray-400">
                                 ${trip.boardingStopName} → ${trip.alightingStopName}
@@ -336,7 +339,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Modal Logic ---
     const openTripDetail = (trip) => {
         state.selectedTrip = trip;
-        modalTripTime.textContent = trip.departure;
+        modalTripTime.textContent = TimeUtils.format12h(trip.departure);
         modalDirection.innerHTML = state.currentDir === 'broadway_to_botany' ? 'Broadway → Botany' : 'Botany → Broadway';
 
         modalStops.innerHTML = '';
@@ -354,7 +357,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
                 <div class="flex-1">
                     <p class="text-sm font-medium">${stop.name}</p>
-                    <p class="text-xs text-gray-500 dark:text-gray-400">${stop.time}</p>
+                    <p class="text-xs text-gray-500 dark:text-gray-400">${TimeUtils.format12h(stop.time)}</p>
                 </div>
             `;
             modalStops.appendChild(stopEl);
